@@ -1,34 +1,38 @@
 #!/usr/bin/env python3
-"""Hermes Agent 每日自动更新脚本
+"""Hermes Agent 每日自动更新脚本 (Linux cron 模式)
 - git pull 更新代码
 - 比较版本变化
-- 发送 Telegram 通知
+- 直接通过 Telegram Bot API 发送通知
 - 重启 gateway（如有更新）
+- 无更新时静默退出
 """
 
 import subprocess
 import os
-import sys
-from pathlib import Path
+import time
+import json
+import urllib.request
 
-# 从脚本同目录的 .env 文件加载配置
+REPO_DIR = "/home/hermes/hermes-agent"
+
+# Telegram 配置（从 .env 读取）
 def load_env():
-    env_file = Path(__file__).parent / ".env"
-    if env_file.exists():
-        for line in env_file.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, value = line.split("=", 1)
-                os.environ.setdefault(key.strip(), value.strip())
+    env = {}
+    env_path = os.path.expanduser("~/.hermes/.env")
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if "=" in line and not line.startswith("#"):
+                    k, v = line.split("=", 1)
+                    env[k.strip()] = v.strip()
+    return env
 
-load_env()
-
-REPO_DIR = os.environ.get("HERMES_REPO_DIR", "/home/hermes/hermes-agent")
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+_env = load_env()
+BOT_TOKEN = _env.get("TELEGRAM_BOT_TOKEN", "")
+CHAT_ID = _env.get("TELEGRAM_CHAT_ID", _env.get("TELEGRAM_HOME_CHANNEL", ""))
 
 def run(cmd, cwd=None):
-    """运行命令，返回 (stdout, returncode)"""
     try:
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60, cwd=cwd)
         return r.stdout.strip(), r.returncode
@@ -44,57 +48,76 @@ def get_version():
     return out or "unknown"
 
 def send_telegram(text):
-    """通过 curl 发送 Telegram 消息"""
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("Warning: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set, skipping notification")
+    if not BOT_TOKEN or not CHAT_ID:
+        print("Warning: Telegram credentials not found")
         return
-
-    import urllib.request
-    import json
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    data = json.dumps({"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"}).encode()
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    data = json.dumps({"chat_id": CHAT_ID, "text": text}).encode()
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
     try:
-        urllib.request.urlopen(req, timeout=10)
+        urllib.request.urlopen(req, timeout=15)
     except Exception as e:
-        print(f"Telegram notification failed: {e}")
+        print(f"Telegram send failed: {e}")
 
 def main():
     # 1. 更新前版本
     version_before = get_version()
-    
+
     # 2. git fetch + pull
     run("git fetch origin", cwd=REPO_DIR)
     pull_out, pull_rc = run("git pull origin main", cwd=REPO_DIR)
-    
-    # 3. 检查是否有更新
+
+    # 3. 无更新 → 静默退出
     if "Already up to date" in pull_out or "已经是最新的" in pull_out:
-        print("Already up to date, no notification needed.")
         return
-    
-    # 4. 有更新，获取新版本
+
+    # 4. 有更新 → 获取新版本
     version_after = get_version()
-    
+
     # 5. 统计更新的 commit 数
     log_out, _ = run("git log --oneline HEAD@{1}..HEAD 2>/dev/null | wc -l", cwd=REPO_DIR)
     commit_count = log_out.strip() if log_out.strip().isdigit() else "?"
-    
-    # 6. 构建报告
+
+    # 6. 获取新功能列表（最近 commit 信息）
+    changelog_out, _ = run("git log --oneline HEAD@{1}..HEAD 2>/dev/null", cwd=REPO_DIR)
+    commits = []
+    if changelog_out:
+        for line in changelog_out.strip().split("\n"):
+            line = line.strip()
+            if line:
+                # 去掉 commit hash，只保留描述
+                parts = line.split(" ", 1)
+                if len(parts) > 1:
+                    commits.append(parts[1])
+
+    # 过滤出有价值的功能 commit（跳过 merge/fix typo 等）
+    features = []
+    skip_keywords = ["merge", "typo", "format", "whitespace", "bump version", "chore:"]
+    for c in commits:
+        if not any(kw in c.lower() for kw in skip_keywords):
+            features.append(f"  • {c}")
+
+    features_text = "\n".join(features[:10]) if features else "  (无详细描述)"
+    if len(features) > 10:
+        features_text += f"\n  ... 还有 {len(features) - 10} 项"
+
+    # 7. 发送 Telegram 通知
     report = f"""🔄 Hermes 每日更新
 
-更新前: {version_before}
-更新后: {version_after}
+📦 版本: {version_after}
+📋 更新前: {version_before}
 新 commits: {commit_count}
-状态: ✅ 更新成功
+
+📝 更新内容:
+{features_text}
 
 正在重启 gateway..."""
     
-    print(report)
     send_telegram(report)
-    
-    # 7. 重启 gateway（更新后才重启）
-    import time
-    time.sleep(2)
+    print(report)
+
+    # 7. 等消息发出后重启 gateway
+    time.sleep(3)
     run("systemctl --user restart hermes-gateway")
 
 if __name__ == "__main__":
