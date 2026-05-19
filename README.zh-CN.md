@@ -13,6 +13,7 @@ Hermes Agent 每日自动更新脚本，通过 Telegram 通知更新结果。
 - 发送 Telegram 通知（包含版本号、更新内容）
 - 自动重启 gateway
 - 无更新时静默退出
+- **健壮的版本检测**：依次尝试 `hermes --version`、完整路径、package.json、git tags
 
 ## 通知示例
 

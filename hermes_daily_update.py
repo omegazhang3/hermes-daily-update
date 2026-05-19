@@ -15,6 +15,9 @@ import urllib.request
 
 REPO_DIR = "/home/hermes/hermes-agent"
 
+# 确保 cron 环境也能找到 hermes
+os.environ["PATH"] = os.path.expanduser("~/.local/bin") + ":" + os.environ.get("PATH", "")
+
 # Telegram 配置（从 .env 读取）
 def load_env():
     env = {}
@@ -40,12 +43,41 @@ def run(cmd, cwd=None):
         return "timeout", 1
 
 def get_version():
+    """获取 Hermes 版本，多种方式尝试"""
+    # 方式1: hermes --version
     out, rc = run("hermes --version")
-    if rc == 0:
+    if rc == 0 and out:
         for part in out.split("\n"):
             if "Hermes" in part or "v0." in part:
                 return part.strip()
-    return out or "unknown"
+        # 返回第一行
+        return out.split("\n")[0].strip()
+    
+    # 方式2: 尝试完整路径
+    hermes_bin = os.path.expanduser("~/.local/bin/hermes")
+    if os.path.exists(hermes_bin):
+        out, rc = run(f"{hermes_bin} --version")
+        if rc == 0 and out:
+            for part in out.split("\n"):
+                if "Hermes" in part or "v0." in part:
+                    return part.strip()
+    
+    # 方式3: 从 package.json 读取版本
+    pkg_json = os.path.join(REPO_DIR, "package.json")
+    if os.path.exists(pkg_json):
+        try:
+            with open(pkg_json) as f:
+                pkg = json.load(f)
+                return f"v{pkg.get('version', '?')}"
+        except:
+            pass
+    
+    # 方式4: 从 git tag 获取
+    out, rc = run("git describe --tags --abbrev=0 2>/dev/null", cwd=REPO_DIR)
+    if rc == 0 and out:
+        return out.strip()
+    
+    return "unknown"
 
 def send_telegram(text):
     if not BOT_TOKEN or not CHAT_ID:

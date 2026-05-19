@@ -13,6 +13,7 @@ Hermes Agent daily auto-update script with Telegram notifications.
 - Send Telegram notification with update details
 - Auto-restart gateway after update
 - Silent exit when no updates available
+- **Robust version detection**: tries `hermes --version`, full path, package.json, git tags
 
 ## Notification Example
 
