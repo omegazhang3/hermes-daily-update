@@ -2,36 +2,14 @@
 
 # hermes-daily-update
 
-Hermes Agent daily auto-update script with Telegram notifications.
+Hermes Agent daily auto-update script with optional Telegram notifications.
 
 ## Features
 
-- `hermes update` to update Hermes Agent (code + dependencies + gateway restart)
-- Detect version changes
-- Display new version number prominently
-- Show changelog (filtered commit messages, skips merge/typo/chore)
-- Send Telegram notification with update details
-- Auto-restart gateway after update
+- **Always runs `hermes update`** — ensures code, dependencies, and gateway are up to date
+- Detect version changes and show changelog
+- Telegram notification (optional) — configured credentials send, unconfigured silently skipped
 - Silent exit when no updates available
-- **Robust version detection**: tries `hermes --version`, full path, package.json, git tags
-
-## Notification Example
-
-```
-🔄 Hermes 每日更新
-
-📦 版本: Hermes v0.14.x
-📋 更新前: Hermes v0.13.x
-新 commits: 147
-
-📝 更新内容:
-  • feat(browser): browser-use + firecrawl plugins
-  • feat(xai): add xAI Grok OAuth provider
-  • feat(cli): add `hermes send` to pipe script output
-  ... 还有 137 项
-
-正在重启 gateway...
-```
 
 ## Setup
 
@@ -40,11 +18,13 @@ Hermes Agent daily auto-update script with Telegram notifications.
    cp .env.example .env
    ```
 
-2. Edit `.env` with your Telegram credentials:
+2. (Optional) Edit `.env` with your Telegram credentials for notifications:
    ```
    TELEGRAM_BOT_TOKEN=your_bot_token_here
    TELEGRAM_CHAT_ID=your_chat_id_here
    ```
+
+   If left empty, the script still runs `hermes update` — just without notifications.
 
 ## Usage
 

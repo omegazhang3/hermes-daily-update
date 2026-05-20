@@ -2,36 +2,14 @@
 
 # hermes-daily-update
 
-Hermes Agent 每日自动更新脚本，通过 Telegram 通知更新结果。
+Hermes Agent 每日自动更新脚本，可选 Telegram 通知。
 
 ## 功能
 
-- `hermes update` 更新 Hermes Agent（代码 + 依赖 + 重启 gateway）
-- 检测版本变化
-- 显示新版本号
-- 显示更新内容（过滤后的 commit 信息，跳过 merge/typo/chore）
-- 发送 Telegram 通知（包含版本号、更新内容）
-- 自动重启 gateway
+- **始终执行 `hermes update`** — 确保代码、依赖和 gateway 保持最新
+- 检测版本变化，显示更新日志
+- Telegram 通知（可选）— 配置了凭证就发送，未配置则静默跳过
 - 无更新时静默退出
-- **健壮的版本检测**：依次尝试 `hermes --version`、完整路径、package.json、git tags
-
-## 通知示例
-
-```
-🔄 Hermes 每日更新
-
-📦 版本: Hermes v0.14.x
-📋 更新前: Hermes v0.13.x
-新 commits: 147
-
-📝 更新内容:
-  • feat(browser): browser-use + firecrawl plugins
-  • feat(xai): add xAI Grok OAuth provider
-  • feat(cli): add `hermes send` to pipe script output
-  ... 还有 137 项
-
-正在重启 gateway...
-```
 
 ## 配置
 
@@ -40,11 +18,13 @@ Hermes Agent 每日自动更新脚本，通过 Telegram 通知更新结果。
    cp .env.example .env
    ```
 
-2. 编辑 `.env` 填入你的 Telegram 凭证：
+2. （可选）编辑 `.env` 填入 Telegram 凭证以接收通知：
    ```
    TELEGRAM_BOT_TOKEN=your_bot_token_here
    TELEGRAM_CHAT_ID=your_chat_id_here
    ```
+
+   留空也可以，脚本仍会正常执行 `hermes update`，只是不发通知。
 
 ## 使用
 
