@@ -103,6 +103,9 @@ def main():
     if "Already up to date" in pull_out or "已经是最新的" in pull_out:
         return
 
+    # 3.5 更新 Hermes CLI
+    subprocess.run("hermes update", shell=True, timeout=120)
+
     # 4. 有更新 → 获取新版本
     version_after = get_version()
 
