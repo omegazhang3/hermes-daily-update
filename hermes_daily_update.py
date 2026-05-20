@@ -16,12 +16,12 @@ import urllib.request
 REPO_DIR = "/home/hermes/hermes-agent"
 
 # 确保 cron 环境也能找到 hermes
-os.environ["PATH"] = os.path.expanduser("~/.local/bin") + ":" + os.environ.get("PATH", "")
+os.environ["PATH"] = "/home/hermes/.local/bin" + ":" + os.environ.get("PATH", "")
 
 # Telegram 配置（从 .env 读取）
 def load_env():
     env = {}
-    env_path = os.path.expanduser("~/.hermes/.env")
+    env_path = "/home/hermes/.hermes/.env"
     if os.path.exists(env_path):
         with open(env_path) as f:
             for line in f:
@@ -54,7 +54,7 @@ def get_version():
         return out.split("\n")[0].strip()
     
     # 方式2: 尝试完整路径
-    hermes_bin = os.path.expanduser("~/.local/bin/hermes")
+    hermes_bin = "/home/hermes/.local/bin/hermes"
     if os.path.exists(hermes_bin):
         out, rc = run(f"{hermes_bin} --version")
         if rc == 0 and out:
@@ -104,7 +104,7 @@ def main():
         return
 
     # 3.5 更新 Hermes CLI
-    subprocess.run("hermes update", shell=True, timeout=120)
+    subprocess.run("hermes update", shell=True)
 
     # 4. 有更新 → 获取新版本
     version_after = get_version()
