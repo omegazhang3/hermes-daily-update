@@ -21,7 +21,7 @@ os.environ["PATH"] = "/home/hermes/.local/bin" + ":" + os.environ.get("PATH", ""
 # Telegram 配置（从 .env 读取）
 def load_env():
     env = {}
-    env_path = "/home/hermes/.hermes/.env"
+    env_path = "/home/hermes/aimint/hermes-daily-update/.env"
     if os.path.exists(env_path):
         with open(env_path) as f:
             for line in f:
