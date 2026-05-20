@@ -6,7 +6,7 @@ Hermes Agent daily auto-update script with Telegram notifications.
 
 ## Features
 
-- `git pull` to update Hermes Agent code
+- `hermes update` to update Hermes Agent (code + dependencies + gateway restart)
 - Detect version changes
 - Display new version number prominently
 - Show changelog (filtered commit messages, skips merge/typo/chore)
@@ -28,13 +28,6 @@ Hermes Agent daily auto-update script with Telegram notifications.
   • feat(browser): browser-use + firecrawl plugins
   • feat(xai): add xAI Grok OAuth provider
   • feat(cli): add `hermes send` to pipe script output
-  • feat(status): append session recap to /status output
-  • feat(cli): show ▶ N indicator for background tasks
-  • feat(cli): add /exit --delete flag
-  • feat(agent): Added gemma 4 to reasoning allowlist
-  • feat(tools): mirror image_gen plugin-injection
-  • feat(gateway): add .ts/.py/.sh to SUPPORTED_DOCUMENT_TYPES
-  • feat(discord): allow_any_attachment config
   ... 还有 137 项
 
 正在重启 gateway...
@@ -49,9 +42,8 @@ Hermes Agent daily auto-update script with Telegram notifications.
 
 2. Edit `.env` with your Telegram credentials:
    ```
-   TELEGRAM_BOT_TOKEN=your_bot_token
-   TELEGRAM_CHAT_ID=your_chat_id
-   HERMES_REPO_DIR=/home/hermes/hermes-agent
+   TELEGRAM_BOT_TOKEN=your_bot_token_here
+   TELEGRAM_CHAT_ID=your_chat_id_here
    ```
 
 ## Usage
@@ -67,15 +59,13 @@ python3 hermes_daily_update.py
 5 17 * * * /usr/bin/python3 /path/to/hermes_daily_update.py >> /path/to/logs/daily_update.log 2>&1
 ```
 
-### Hermes Cron (alternative)
-
-```bash
-hermes cron add --name "hermes-daily-update" --schedule "5 19 * * *" --script hermes_daily_update.py --deliver telegram:your_chat_id
-```
-
 ## Why Linux Crontab?
 
 Hermes cron scheduler may miss job triggers if the gateway restarts near the scheduled time. Linux crontab runs independently of the gateway process, making it more reliable for time-critical daily updates.
+
+## Why `.env` in Project Directory?
+
+In cron environments, the `HOME` variable may be overridden (e.g. set to `~/.hermes` instead of `~`), which causes `os.path.expanduser("~/.hermes/.env")` to resolve to an incorrect path like `~/.hermes/.hermes/.env`. To avoid this issue, the script reads credentials from `.env` in the project directory using an absolute path. This is more reliable and keeps credentials isolated per project.
 
 ## License
 
