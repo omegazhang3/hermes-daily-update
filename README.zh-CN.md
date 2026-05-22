@@ -7,7 +7,8 @@ Hermes Agent 每日自动更新脚本，可选 Telegram 通知。
 ## 功能
 
 - **始终执行 `hermes update`** — 确保代码、依赖和 gateway 保持最新
-- 检测版本变化，显示更新日志
+- 可靠的版本检测 — 优先读取 agent 仓库的 `package.json` + commit SHA，确保 `version_before` 与 `version_after` 在有更新时真正不同（此前 `hermes --version` 返回的是 CLI 自身静态版本，导致前后一致）
+- 易读的更新日志 — 解析 Conventional Commits（`feat:` / `fix:` / `perf:` ...），按 ✨ 新功能 / 🐛 Bug 修复 / ⚡ 性能优化 / ... 分组展示；自动过滤 `chore`、`style`、`test`、merge、typo/格式调整等噪声提交
 - Telegram 通知（可选）— 配置了凭证就发送，未配置则静默跳过
 - 无更新时静默退出
 

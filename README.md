@@ -7,7 +7,8 @@ Hermes Agent daily auto-update script with optional Telegram notifications.
 ## Features
 
 - **Always runs `hermes update`** — ensures code, dependencies, and gateway are up to date
-- Detect version changes and show changelog
+- Reliable version detection — reads `package.json` + commit SHA from the agent repo, so `version_before` and `version_after` actually differ when an update lands (the previous `hermes --version` fallback returned the CLI's own static version)
+- Human-readable changelog — parses Conventional Commits (`feat:`, `fix:`, `perf:`, ...) and groups them under labeled sections (✨ 新功能 / 🐛 Bug 修复 / ⚡ 性能优化 / ...). Noise commits (`chore`, `style`, `test`, merges, typo/format-only) are filtered out.
 - Telegram notification (optional) — configured credentials send, unconfigured silently skipped
 - Silent exit when no updates available
 

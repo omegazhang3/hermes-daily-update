@@ -9,6 +9,7 @@
 import subprocess
 import os
 import json
+import re
 import urllib.request
 
 REPO_DIR = "/home/hermes/hermes-agent"
@@ -41,7 +42,36 @@ def run(cmd, cwd=None):
         return "timeout", 1
 
 def get_version():
-    """获取 Hermes 版本，多种方式尝试"""
+    """获取 Hermes 版本，优先读取仓库内真实版本来源（git pull 后会变化），
+    避免 `hermes --version` 返回 CLI 自身版本导致 before/after 相同。"""
+    # 1) 仓库内 package.json + 当前 commit（最准确反映 git pull 后的变化）
+    pkg_json = os.path.join(REPO_DIR, "package.json")
+    pkg_version = None
+    if os.path.exists(pkg_json):
+        try:
+            with open(pkg_json) as f:
+                pkg = json.load(f)
+                v = pkg.get("version")
+                if v:
+                    pkg_version = f"v{v}"
+        except Exception:
+            pass
+
+    short_sha, rc = run("git rev-parse --short HEAD", cwd=REPO_DIR)
+    if rc == 0 and short_sha:
+        if pkg_version:
+            return f"{pkg_version} ({short_sha})"
+        return short_sha
+
+    if pkg_version:
+        return pkg_version
+
+    # 2) 仓库最近 tag
+    out, rc = run("git describe --tags --abbrev=0 2>/dev/null", cwd=REPO_DIR)
+    if rc == 0 and out:
+        return out.strip()
+
+    # 3) 兜底：hermes CLI 版本
     out, rc = run("hermes --version")
     if rc == 0 and out:
         for part in out.split("\n"):
@@ -57,20 +87,83 @@ def get_version():
                 if "Hermes" in part or "v0." in part:
                     return part.strip()
 
-    pkg_json = os.path.join(REPO_DIR, "package.json")
-    if os.path.exists(pkg_json):
-        try:
-            with open(pkg_json) as f:
-                pkg = json.load(f)
-                return f"v{pkg.get('version', '?')}"
-        except:
-            pass
-
-    out, rc = run("git describe --tags --abbrev=0 2>/dev/null", cwd=REPO_DIR)
-    if rc == 0 and out:
-        return out.strip()
-
     return "unknown"
+
+CATEGORY_LABELS = [
+    ("feat",     "✨ 新功能"),
+    ("fix",      "🐛 Bug 修复"),
+    ("perf",     "⚡ 性能优化"),
+    ("refactor", "♻️  重构"),
+    ("security", "🔒 安全更新"),
+    ("docs",     "📚 文档"),
+]
+SKIP_TYPES = {"chore", "style", "test", "ci", "build", "merge"}
+SKIP_KEYWORDS = ["typo", "format", "whitespace", "bump version"]
+
+def _clean_subject(subject):
+    """美化单条 commit subject：去前缀、去 issue 号、首字母大写。"""
+    s = subject.strip()
+    s = re.sub(r"\s*\(#\d+\)\s*$", "", s)         # 去掉末尾 (#123)
+    s = re.sub(r"\s*#\d+\s*$", "", s)             # 去掉末尾 #123
+    s = re.sub(r"\s+", " ", s).strip().rstrip(".")
+    if s:
+        s = s[0].upper() + s[1:]
+    return s
+
+def _parse_commit(subject):
+    """解析 Conventional Commit，返回 (type, clean_subject) 或 (None, clean_subject)。"""
+    m = re.match(r"^([a-zA-Z]+)(?:\([^)]*\))?!?:\s*(.+)$", subject)
+    if m:
+        return m.group(1).lower(), _clean_subject(m.group(2))
+    return None, _clean_subject(subject)
+
+def format_changelog(changelog_out):
+    """把 `git log --oneline` 输出格式化成分组、易读的更新内容。"""
+    if not changelog_out or not changelog_out.strip():
+        return "  (无详细描述)"
+
+    groups = {key: [] for key, _ in CATEGORY_LABELS}
+    others = []
+
+    for line in changelog_out.strip().split("\n"):
+        parts = line.strip().split(" ", 1)
+        if len(parts) < 2:
+            continue
+        subject = parts[1]
+        lower = subject.lower()
+        if any(kw in lower for kw in SKIP_KEYWORDS):
+            continue
+
+        ctype, clean = _parse_commit(subject)
+        if ctype in SKIP_TYPES:
+            continue
+        if not clean:
+            continue
+
+        if ctype in groups:
+            groups[ctype].append(clean)
+        else:
+            others.append(clean)
+
+    sections = []
+    for key, label in CATEGORY_LABELS:
+        items = groups[key]
+        if not items:
+            continue
+        shown = items[:8]
+        block = [label + ":"] + [f"  • {x}" for x in shown]
+        if len(items) > 8:
+            block.append(f"  ... 还有 {len(items) - 8} 项")
+        sections.append("\n".join(block))
+
+    if others:
+        shown = others[:8]
+        block = ["📌 其他:"] + [f"  • {x}" for x in shown]
+        if len(others) > 8:
+            block.append(f"  ... 还有 {len(others) - 8} 项")
+        sections.append("\n".join(block))
+
+    return "\n\n".join(sections) if sections else "  (无值得汇报的变更)"
 
 def send_telegram(text):
     """发送 Telegram 通知，凭证未配置则静默跳过"""
@@ -106,34 +199,15 @@ def main():
     # 5. 有更新 → 获取新版本
     version_after = get_version()
 
-    # 6. 统计更新的 commit 数
-    log_out, _ = run(f"git log --oneline {old_head}..{new_head} 2>/dev/null | wc -l", cwd=REPO_DIR)
-    commit_count = log_out.strip() if log_out.strip().isdigit() else "?"
-
-    # 7. 获取新功能列表
+    # 6. 获取新功能列表（解析 Conventional Commits，分组易读）
     changelog_out, _ = run(f"git log --oneline {old_head}..{new_head} 2>/dev/null", cwd=REPO_DIR)
-    commits = []
-    if changelog_out:
-        for line in changelog_out.strip().split("\n"):
-            line = line.strip()
-            if line:
-                parts = line.split(" ", 1)
-                if len(parts) > 1:
-                    commits.append(parts[1])
+    features_text = format_changelog(changelog_out)
 
-    skip_keywords = ["merge", "typo", "format", "whitespace", "bump version", "chore:"]
-    features = [f"  • {c}" for c in commits if not any(kw in c.lower() for kw in skip_keywords)]
-
-    features_text = "\n".join(features[:10]) if features else "  (无详细描述)"
-    if len(features) > 10:
-        features_text += f"\n  ... 还有 {len(features) - 10} 项"
-
-    # 8. 发送 Telegram 通知（可选）
+    # 7. 发送 Telegram 通知（可选）
     report = f"""🔄 Hermes 每日更新
 
 📦 版本: {version_after}
 📋 更新前: {version_before}
-新 commits: {commit_count}
 
 📝 更新内容:
 {features_text}"""
